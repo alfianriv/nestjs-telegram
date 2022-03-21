@@ -10,7 +10,7 @@ export class TelegramClient extends Server implements CustomTransportStrategy {
 
   async listen(callback: () => void) {
     this.logger.log('Telegram client is listening for messages');
-    this.bot = new TelegramBot(this.token);
+    this.bot = new TelegramBot(this.token, { polling: true });
 
     this.bindEventHandlers();
     callback();
@@ -23,18 +23,18 @@ export class TelegramClient extends Server implements CustomTransportStrategy {
   private async bindEventHandlers() {
     this.bot.on('message', async (msg) => {
       this.logger.log(`Received message from ${msg.chat.id}`);
-      const handler = this.getHandlerByPattern(msg.text);
-      const data = this.parseMessage(msg);
-      const context = {
-        data,
-        message: msg,
-      };
-      const stream = this.transformToObservable(await handler(data, context));
-      this.send(stream, () => null);
+      try {
+        const handler = this.getHandlerByPattern(msg.text);
+        const data = msg;
+        const context = {
+          data,
+          message: msg,
+        };
+        const stream = this.transformToObservable(await handler(data, context));
+        this.send(stream, () => null);
+      } catch (error) {
+        this.logger.error(`Get message '${msg.text}' but no handler found`);
+      }
     });
-  }
-
-  parseMessage(msg) {
-    return JSON.parse(msg);
   }
 }
