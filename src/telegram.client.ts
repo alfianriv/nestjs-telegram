@@ -1,40 +1,41 @@
-import { CustomTransportStrategy, Server } from '@nestjs/microservices';
+import { Module } from '@nestjs/common';
 import * as TelegramBot from 'node-telegram-bot-api';
+import { TelegramService } from './telegram.service';
+import { TELEGRAM_SERVER_OPTIONS } from './telegram.constants';
 
-export class TelegramClient extends Server implements CustomTransportStrategy {
-  private bot;
-
-  constructor(private readonly token: string) {
-    super();
+@Module({})
+export class TelegramClient {
+  static forRootAsync(options) {
+    return {
+      module: TelegramClient,
+      global: options.global,
+      imports: options.imports,
+      providers: [
+        this.createOptionProvider(options),
+        this.createTelegramProvider(),
+      ],
+      exports: [TelegramService],
+    };
   }
 
-  async listen(callback: () => void) {
-    this.logger.log('Telegram client is listening for messages');
-    this.bot = new TelegramBot(this.token, { polling: true });
-
-    this.bindEventHandlers();
-    callback();
+  private static createTelegramProvider() {
+    return {
+      provide: TelegramService,
+      useFactory: (config) => {
+        const bot = new TelegramBot(config.token);
+        return new Promise((resolve) => {
+          resolve(new TelegramService(bot));
+        });
+      },
+      inject: [TELEGRAM_SERVER_OPTIONS],
+    };
   }
 
-  close() {
-    return;
-  }
-
-  private async bindEventHandlers() {
-    this.bot.on('message', async (msg) => {
-      this.logger.log(`Received message from ${msg.chat.id}`);
-      try {
-        const handler = this.getHandlerByPattern(msg.text);
-        const data = msg;
-        const context = {
-          data,
-          message: msg,
-        };
-        const stream = this.transformToObservable(await handler(data, context));
-        this.send(stream, () => null);
-      } catch (error) {
-        this.logger.error(`Get message '${msg.text}' but no handler found`);
-      }
-    });
+  private static createOptionProvider(options) {
+    return {
+      provide: TELEGRAM_SERVER_OPTIONS,
+      useFactory: options.useFactory,
+      inject: options.inject || [],
+    };
   }
 }
